@@ -54,10 +54,10 @@ jobs:
     
     - name: ⚙️ 설정 파일 업데이트
       run: |
-        sed -i 's/YOUR_SPREADSHEET_ID_HERE/${{ secrets.SPREADSHEET_ID }}/g' config.py
+        sed -i 's|YOUR_SPREADSHEET_ID_HERE|${{ secrets.SPREADSHEET_ID }}|g' config.py
         
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          sed -i 's/SEARCH_KEYWORD = ".*"/SEARCH_KEYWORD = "${{ github.event.inputs.keyword }}"/g' config.py
+          sed -i 's|SEARCH_KEYWORD = ".*"|SEARCH_KEYWORD = "${{ github.event.inputs.keyword }}"|g' config.py
           sed -i 's/MAX_PAGES = .*/MAX_PAGES = ${{ github.event.inputs.max_pages }}/g' config.py
           sed -i 's/MAX_THREADS = .*/MAX_THREADS = ${{ github.event.inputs.max_threads }}/g' config.py
         fi
