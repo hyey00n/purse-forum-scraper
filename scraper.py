@@ -35,7 +35,7 @@ class PurseForumScraper:
         except Exception as e:
             log(f"❌ 초기화 실패: {e}")
             raise
-        
+    
     def setup_driver(self):
         """Chrome 드라이버 설정"""
         log("🌐 Chrome 드라이버 설정 중...")
@@ -49,9 +49,14 @@ class PurseForumScraper:
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         self.driver = webdriver.Chrome(options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 10)
-        log("✅ Chrome 드라이버 설정 완료")
         
+        # 타임아웃 설정
+        self.driver.set_page_load_timeout(30)
+        self.driver.implicitly_wait(10)
+        
+        self.wait = WebDriverWait(self.driver, 10)
+        log("✅ Chrome 드라이버 설정 완료 (타임아웃: 30초)")
+    
     def setup_google_sheets(self):
         """구글 시트 연결 설정"""
         log("📊 구글 시트 연결 중...")
@@ -92,19 +97,29 @@ class PurseForumScraper:
         """포럼 섹션 접속"""
         log(f"\n🔍 Asian Plastic Surgery 포럼 접속 중...")
         
-        # 직접 포럼 섹션으로 이동
         forum_url = "https://forum.purseblog.com/forums/asian-plastic-surgery-cosmetic-procedures.277/"
         
         try:
-            self.driver.get(forum_url)
-            time.sleep(3)
+            log(f"🌐 URL: {forum_url}")
+            log("⏳ 페이지 로딩 대기 중... (최대 30초)")
             
-            log(f"✅ 페이지 로드 완료: {self.driver.current_url}")
-            log(f"🔍 키워드: '{keyword}'")
+            self.driver.get(forum_url)
+            
+            log("⏰ 5초 대기...")
+            time.sleep(5)
+            
+            log(f"✅ 페이지 로드 완료!")
+            log(f"📍 현재 URL: {self.driver.current_url}")
+            log(f"📄 페이지 제목: {self.driver.title}")
+            
+        except TimeoutException:
+            log(f"❌ 타임아웃: 페이지 로드가 30초 초과")
+            log("🔧 포럼 사이트가 느리거나 봇을 차단했을 수 있습니다")
+            raise
         except Exception as e:
             log(f"❌ 페이지 로드 실패: {e}")
             raise
-        
+    
     def collect_thread_links(self, max_pages=5):
         """스레드 링크 수집 (모든 스레드)"""
         log(f"\n📋 링크 수집 중... (최대 {max_pages}페이지)")
@@ -146,7 +161,7 @@ class PurseForumScraper:
                 break
         
         log(f"\n✅ 총 {len(self.collected_urls)}개 링크 수집 완료")
-        
+    
     def extract_thread_content(self, url):
         """개별 스레드 본문 추출"""
         try:
