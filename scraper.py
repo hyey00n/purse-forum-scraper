@@ -1,100 +1,347 @@
-def search_forum(self, keyword):
-    """포럼 섹션 접속"""
-    print(f"\n🔍 Asian Plastic Surgery 포럼 접속 중...")
-    
-    # 직접 포럼 섹션으로 이동
-    forum_url = "https://forum.purseblog.com/forums/asian-plastic-surgery-cosmetic-procedures.277/"
-    
-    self.driver.get(forum_url)
-    time.sleep(3)
-    
-    print(f"📄 페이지 로드 완료: {self.driver.current_url}")
-    print(f"🔍 키워드 '{keyword}' 필터링은 본문 수집 시 적용됩니다")
+"""
+Purse Forum 크롤러
+Asian Plastic Surgery 포럼에서 데이터 수집 → 구글 시트 저장
+"""
 
-def collect_thread_links(self, max_pages=5, keyword=None):
-    """스레드 링크 수집"""
-    print(f"\n📋 링크 수집 중... (최대 {max_pages}페이지)")
-    
-    for page in range(1, max_pages + 1):
+import sys
+import time
+import re
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from config import *
+
+# 즉시 출력 설정
+def log(message):
+    """즉시 출력되는 로그"""
+    print(message, flush=True)
+
+class PurseForumScraper:
+    def __init__(self):
+        log("🔧 초기화 시작...")
+        self.collected_urls = set()
+        self.results = []
+        
         try:
-            print(f"\n--- 페이지 {page} ---")
+            self.setup_driver()
+            self.setup_google_sheets()
+            log("✅ 초기화 완료!")
+        except Exception as e:
+            log(f"❌ 초기화 실패: {e}")
+            raise
+        
+    def setup_driver(self):
+        """Chrome 드라이버 설정"""
+        log("🌐 Chrome 드라이버 설정 중...")
+        
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        self.driver = webdriver.Chrome(options=chrome_options)
+        self.wait = WebDriverWait(self.driver, 10)
+        log("✅ Chrome 드라이버 설정 완료")
+        
+    def setup_google_sheets(self):
+        """구글 시트 연결 설정"""
+        log("📊 구글 시트 연결 중...")
+        
+        try:
+            scope = [
+                'https://spreadsheets.google.com/feeds',
+                'https://www.googleapis.com/auth/drive'
+            ]
             
-            thread_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="/threads/"]')
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                GOOGLE_CREDENTIALS_FILE, 
+                scope
+            )
             
-            page_urls = []
-            for link in thread_links:
-                try:
-                    url = link.get_attribute('href')
-                    if url and '/threads/' in url and url not in self.collected_urls:
-                        clean_url = url.split('?')[0].split('#')[0]
-                        if clean_url not in self.collected_urls:
-                            # 키워드 필터링 (제목에 키워드 포함된 것만)
-                            if keyword:
-                                title = link.text.lower()
-                                if keyword.lower() in title:
-                                    self.collected_urls.add(clean_url)
-                                    page_urls.append(clean_url)
-                            else:
+            log(f"📋 스프레드시트 ID: {SPREADSHEET_ID}")
+            
+            self.gc = gspread.authorize(creds)
+            self.sheet = self.gc.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
+            
+            # 헤더 설정
+            headers = ['제목', 'URL', '작성자', '작성일', '본문 내용', '가격 정보', '병원', '수집일시']
+            
+            if not self.sheet.row_values(1):
+                self.sheet.update('A1:H1', [headers])
+                self.sheet.format('A1:H1', {
+                    'backgroundColor': {'red': 0.26, 'green': 0.52, 'blue': 0.96},
+                    'textFormat': {'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}, 'bold': True}
+                })
+            
+            log("✅ 구글 시트 연결 완료")
+            
+        except Exception as e:
+            log(f"❌ 구글 시트 연결 실패: {e}")
+            raise
+    
+    def search_forum(self, keyword):
+        """포럼 섹션 접속"""
+        log(f"\n🔍 Asian Plastic Surgery 포럼 접속 중...")
+        
+        # 직접 포럼 섹션으로 이동
+        forum_url = "https://forum.purseblog.com/forums/asian-plastic-surgery-cosmetic-procedures.277/"
+        
+        try:
+            self.driver.get(forum_url)
+            time.sleep(3)
+            
+            log(f"✅ 페이지 로드 완료: {self.driver.current_url}")
+            log(f"🔍 키워드: '{keyword}'")
+        except Exception as e:
+            log(f"❌ 페이지 로드 실패: {e}")
+            raise
+        
+    def collect_thread_links(self, max_pages=5):
+        """스레드 링크 수집 (모든 스레드)"""
+        log(f"\n📋 링크 수집 중... (최대 {max_pages}페이지)")
+        
+        for page in range(1, max_pages + 1):
+            try:
+                log(f"\n--- 페이지 {page} ---")
+                
+                thread_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="/threads/"]')
+                log(f"🔗 발견된 링크 수: {len(thread_links)}")
+                
+                page_urls = []
+                for link in thread_links:
+                    try:
+                        url = link.get_attribute('href')
+                        if url and '/threads/' in url:
+                            clean_url = url.split('?')[0].split('#')[0]
+                            if clean_url not in self.collected_urls:
                                 self.collected_urls.add(clean_url)
                                 page_urls.append(clean_url)
-                except:
-                    continue
+                    except:
+                        continue
+                
+                log(f"✅ 페이지 {page}: {len(page_urls)}개 새 링크 발견")
+                
+                # 다음 페이지
+                if page < max_pages:
+                    try:
+                        next_button = self.driver.find_element(By.CSS_SELECTOR, 'a.pageNav-jump--next')
+                        log("➡️ 다음 페이지로 이동...")
+                        next_button.click()
+                        time.sleep(2)
+                    except NoSuchElementException:
+                        log("⚠️ 다음 페이지 없음 (마지막 페이지)")
+                        break
+                        
+            except Exception as e:
+                log(f"❌ 페이지 {page} 처리 중 오류: {e}")
+                break
+        
+        log(f"\n✅ 총 {len(self.collected_urls)}개 링크 수집 완료")
+        
+    def extract_thread_content(self, url):
+        """개별 스레드 본문 추출"""
+        try:
+            self.driver.get(url)
+            time.sleep(2)
             
-            print(f"✅ 페이지 {page}: {len(page_urls)}개 새 링크 발견")
+            # 제목
+            try:
+                title = self.driver.find_element(By.CSS_SELECTOR, 'h1.p-title-value').text
+            except:
+                title = "No title"
             
-            if page < max_pages:
-                try:
-                    next_button = self.driver.find_element(By.CSS_SELECTOR, 'a.pageNav-jump--next')
-                    next_button.click()
-                    time.sleep(2)
-                except NoSuchElementException:
-                    print("⚠️ 다음 페이지 없음")
-                    break
+            # 작성자
+            try:
+                author = self.driver.find_element(By.CSS_SELECTOR, 'a.username').text
+            except:
+                author = "Unknown"
+            
+            # 작성일
+            try:
+                date = self.driver.find_element(By.CSS_SELECTOR, 'time').get_attribute('datetime')
+            except:
+                date = ""
+            
+            # 본문 내용
+            try:
+                content_div = self.driver.find_element(By.CSS_SELECTOR, 'div.bbWrapper')
+                content = content_div.text
+                
+                content = re.sub(r'\n{3,}', '\n\n', content)
+                content = content.strip()
+                
+                if len(content) > 45000:
+                    content = content[:45000] + "\n\n... (본문 너무 길어 일부만 표시)"
                     
+            except:
+                content = "No content"
+            
+            # 가격 정보 추출
+            prices = self.extract_prices(title + " " + content)
+            price_info = ", ".join(prices) if prices else "No price"
+            
+            # 병원 정보 추출
+            hospitals = self.extract_hospitals(title + " " + content)
+            hospital_info = ", ".join(hospitals) if hospitals else "No hospital"
+            
+            return {
+                'title': title,
+                'url': url,
+                'author': author,
+                'date': date,
+                'content': content,
+                'price': price_info,
+                'hospital': hospital_info
+            }
+            
         except Exception as e:
-            print(f"❌ 페이지 {page} 처리 중 오류: {e}")
-            break
+            log(f"❌ 본문 추출 실패 ({url}): {e}")
+            return None
     
-    print(f"\n✅ 총 {len(self.collected_urls)}개 링크 수집 완료")
+    def extract_prices(self, text):
+        """가격 정보 추출"""
+        prices = set()
+        
+        patterns = [
+            r'\$[\d,]+(?:\.\d{2})?',
+            r'[\d,]+\s*(?:usd|USD|dollars?)',
+            r'₩[\d,]+',
+            r'[\d,]+\s*(?:won|KRW)',
+            r'\$?[\d]+\.?\d*k',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            prices.update(matches)
+        
+        return list(prices)[:10]
+    
+    def extract_hospitals(self, text):
+        """병원 이름 추출"""
+        text_lower = text.lower()
+        found_hospitals = []
+        
+        for hospital in HOSPITAL_NAMES:
+            if hospital.lower() in text_lower:
+                found_hospitals.append(hospital)
+        
+        return list(set(found_hospitals))[:5]
+    
+    def save_to_sheet(self):
+        """구글 시트에 저장"""
+        if not self.results:
+            log("⚠️ 저장할 데이터가 없습니다.")
+            return
+        
+        log(f"\n💾 구글 시트에 {len(self.results)}개 데이터 저장 중...")
+        
+        try:
+            existing_rows = len(self.sheet.get_all_values())
+            
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            rows = []
+            
+            for result in self.results:
+                row = [
+                    result['title'],
+                    result['url'],
+                    result['author'],
+                    result['date'],
+                    result['content'],
+                    result['price'],
+                    result['hospital'],
+                    now
+                ]
+                rows.append(row)
+            
+            if rows:
+                start_row = existing_rows + 1
+                cell_range = f'A{start_row}:H{start_row + len(rows) - 1}'
+                self.sheet.update(cell_range, rows)
+                
+                log(f"✅ {len(rows)}개 데이터 저장 완료!")
+                log(f"📊 구글 시트: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
+                
+        except Exception as e:
+            log(f"❌ 구글 시트 저장 실패: {e}")
+    
+    def run(self, keyword, max_pages=5, max_threads=50):
+        """메인 실행"""
+        log("=" * 60)
+        log("🚀 Purse Forum 크롤러 시작")
+        log("=" * 60)
+        
+        try:
+            # 1. 포럼 접속
+            self.search_forum(keyword)
+            
+            # 2. 링크 수집 (키워드 필터링 없이 모든 스레드)
+            self.collect_thread_links(max_pages)
+            
+            if len(self.collected_urls) == 0:
+                log("⚠️ 수집된 링크가 없습니다!")
+                return
+            
+            # 3. 본문 수집
+            log(f"\n📖 본문 수집 시작... (최대 {max_threads}개)")
+            
+            urls_to_process = list(self.collected_urls)[:max_threads]
+            
+            for i, url in enumerate(urls_to_process, 1):
+                log(f"\n[{i}/{len(urls_to_process)}] {url}")
+                
+                result = self.extract_thread_content(url)
+                
+                if result:
+                    self.results.append(result)
+                    log(f"✅ 수집 완료: {result['title'][:50]}...")
+                
+                if i < len(urls_to_process):
+                    time.sleep(DELAY_BETWEEN_REQUESTS)
+            
+            # 4. 구글 시트 저장
+            self.save_to_sheet()
+            
+            log("\n" + "=" * 60)
+            log("✅ 크롤링 완료!")
+            log(f"📊 총 수집: {len(self.results)}개")
+            log("=" * 60)
+            
+        except Exception as e:
+            log(f"\n❌ 오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
+            
+        finally:
+            try:
+                self.driver.quit()
+                log("🔒 브라우저 종료")
+            except:
+                pass
 
-def run(self, keyword, max_pages=5, max_threads=50):
-    """메인 실행"""
-    print("=" * 60)
-    print("🚀 Purse Forum 크롤러 시작")
-    print("=" * 60)
+if __name__ == "__main__":
+    log("=" * 60)
+    log("프로그램 시작!")
+    log("=" * 60)
     
     try:
-        self.search_forum(keyword)
-        self.collect_thread_links(max_pages, keyword)
-        
-        print(f"\n📖 본문 수집 시작... (최대 {max_threads}개)")
-        
-        urls_to_process = list(self.collected_urls)[:max_threads]
-        
-        for i, url in enumerate(urls_to_process, 1):
-            print(f"\n[{i}/{len(urls_to_process)}] {url}")
-            
-            result = self.extract_thread_content(url)
-            
-            if result:
-                self.results.append(result)
-                print(f"✅ 수집 완료: {result['title'][:50]}...")
-            
-            if i < len(urls_to_process):
-                time.sleep(DELAY_BETWEEN_REQUESTS)
-        
-        self.save_to_sheet()
-        
-        print("\n" + "=" * 60)
-        print("✅ 크롤링 완료!")
-        print(f"📊 총 수집: {len(self.results)}개")
-        print("=" * 60)
-        
+        scraper = PurseForumScraper()
+        scraper.run(
+            keyword=SEARCH_KEYWORD,
+            max_pages=MAX_PAGES,
+            max_threads=MAX_THREADS
+        )
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
+        log(f"❌ 프로그램 실행 실패: {e}")
         import traceback
         traceback.print_exc()
-        
-    finally:
-        self.driver.quit()
-        print("🔒 브라우저 종료")
+        sys.exit(1)
