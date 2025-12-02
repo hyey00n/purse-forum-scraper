@@ -53,14 +53,54 @@ jobs:
         echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
     
     - name: ⚙️ 설정 파일 업데이트
+      env:
+        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        KEYWORD: ${{ github.event.inputs.keyword }}
+        MAX_PAGES: ${{ github.event.inputs.max_pages }}
+        MAX_THREADS: ${{ github.event.inputs.max_threads }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        sed -i 's|YOUR_SPREADSHEET_ID_HERE|${{ secrets.SPREADSHEET_ID }}|g' config.py
+        python << 'EOF'
+        import os
         
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          sed -i 's|SEARCH_KEYWORD = ".*"|SEARCH_KEYWORD = "${{ github.event.inputs.keyword }}"|g' config.py
-          sed -i 's/MAX_PAGES = .*/MAX_PAGES = ${{ github.event.inputs.max_pages }}/g' config.py
-          sed -i 's/MAX_THREADS = .*/MAX_THREADS = ${{ github.event.inputs.max_threads }}/g' config.py
-        fi
+        # config.py 읽기
+        with open('config.py', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # SPREADSHEET_ID 교체
+        spreadsheet_id = os.environ.get('SPREADSHEET_ID', '')
+        content = content.replace('YOUR_SPREADSHEET_ID_HERE', spreadsheet_id)
+        
+        # workflow_dispatch인 경우 추가 설정
+        if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
+            keyword = os.environ.get('KEYWORD', 'rhinoplasty')
+            max_pages = os.environ.get('MAX_PAGES', '5')
+            max_threads = os.environ.get('MAX_THREADS', '50')
+            
+            # SEARCH_KEYWORD 교체
+            import re
+            content = re.sub(
+                r'SEARCH_KEYWORD = ".*?"',
+                f'SEARCH_KEYWORD = "{keyword}"',
+                content
+            )
+            content = re.sub(
+                r'MAX_PAGES = \d+',
+                f'MAX_PAGES = {max_pages}',
+                content
+            )
+            content = re.sub(
+                r'MAX_THREADS = \d+',
+                f'MAX_THREADS = {max_threads}',
+                content
+            )
+        
+        # 저장
+        with open('config.py', 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print("✅ config.py 업데이트 완료!")
+        EOF
     
     - name: 🚀 크롤러 실행
       run: |
