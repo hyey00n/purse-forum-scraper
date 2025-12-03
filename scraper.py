@@ -268,6 +268,66 @@ class PurseForumScraper:
         return list(set(found_hospitals))[:5]
     
     def save_to_sheet(self):
+    """구글 시트에 저장 (가격 정보 있는 것만)"""
+    if not self.results:
+        log("⚠️ 저장할 데이터가 없습니다.")
+        return
+    
+    # 가격 관련 키워드
+    price_keywords = ['price', 'cost', 'paid', 'spent', 'total', 'usd', 'krw', 'won', 'dollar', '$', '₩']
+    
+    # 가격 정보가 있는 게시글만 필터링
+    filtered_results = []
+    for result in self.results:
+        text = (result['title'] + " " + result['content']).lower()
+        
+        # 가격 정보가 있거나 가격 키워드가 있으면 포함
+        has_price = result['price'] != "No price"
+        has_keyword = any(keyword in text for keyword in price_keywords)
+        
+        if has_price or has_keyword:
+            filtered_results.append(result)
+            log(f"✅ 가격 정보 발견: {result['title'][:50]}")
+        else:
+            log(f"⏭️ 가격 없음 건너뜀: {result['title'][:50]}")
+    
+    if not filtered_results:
+        log("⚠️ 가격 정보가 있는 게시글이 없습니다.")
+        return
+    
+    log(f"\n💾 구글 시트에 {len(filtered_results)}개 데이터 저장 중... (전체 {len(self.results)}개 중)")
+    
+    try:
+        existing_rows = len(self.sheet.get_all_values())
+        
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        rows = []
+        
+        for result in filtered_results:
+            row = [
+                result['title'],
+                result['url'],
+                result['author'],
+                result['date'],
+                result['content'],
+                result['price'],
+                result['hospital'],
+                now
+            ]
+            rows.append(row)
+        
+        if rows:
+            start_row = existing_rows + 1
+            cell_range = f'A{start_row}:H{start_row + len(rows) - 1}'
+            self.sheet.update(cell_range, rows)
+            
+            log(f"✅ {len(rows)}개 데이터 저장 완료!")
+            log(f"📊 구글 시트: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
+            
+    except Exception as e:
+        log(f"❌ 구글 시트 저장 실패: {e}")
+
+
         """구글 시트에 저장"""
         if not self.results:
             log("⚠️ 저장할 데이터가 없습니다.")
