@@ -1,4 +1,4 @@
-yamlname: Purse Forum Scraper
+name: Purse Forum Scraper
 
 on:
   workflow_dispatch:
@@ -122,3 +122,20 @@ jobs:
         path: |
           *.log
           screenshots/
+```
+
+---
+
+## 💡 주의사항
+
+- **맨 첫 줄은 반드시:** `name: Purse Forum Scraper`
+- **파일명이나 번호를 포함하지 마세요**
+- **전체 선택(Ctrl+A) → 삭제 → 붙여넣기**
+
+---
+
+## ✅ 저장 후
+```
+1. Ctrl+S (저장)
+2. 오류 사라지는지 확인
+3. Source Control로 다시 커밋 시도
