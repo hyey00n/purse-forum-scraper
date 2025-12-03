@@ -14,7 +14,7 @@ on:
       max_pages:
         description: '최대 페이지 수'
         required: false
-        default: '5'
+        default: '3'
   
   schedule:
     - cron: '0 0 * * *'

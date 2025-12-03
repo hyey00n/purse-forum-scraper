@@ -16,7 +16,11 @@ START_PAGE = 1
 MAX_PAGES = 5
 
 # 요청 간 대기 시간 (초)
-DELAY_BETWEEN_REQUESTS = 2
+DELAY_BETWEEN_REQUESTS = 3
+
+# 타임아웃 설정 (초)
+PAGE_LOAD_TIMEOUT = 45
+ELEMENT_WAIT_TIMEOUT = 15
 
 # ============================================
 # 구글 시트 설정
@@ -51,5 +55,3 @@ HOSPITAL_NAMES = [
 # ============================================
 
 FORUM_SECTION_ID = "277"
-PAGE_LOAD_TIMEOUT = 30
-ELEMENT_WAIT_TIMEOUT = 10

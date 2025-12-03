@@ -46,16 +46,17 @@ class PurseForumScraper:
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         self.driver = webdriver.Chrome(options=chrome_options)
         
-        # 타임아웃 설정
-        self.driver.set_page_load_timeout(30)
-        self.driver.implicitly_wait(10)
+        # 타임아웃 설정 증가
+        self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+        self.driver.implicitly_wait(ELEMENT_WAIT_TIMEOUT)
         
-        self.wait = WebDriverWait(self.driver, 10)
-        log("✅ Chrome 드라이버 설정 완료 (타임아웃: 30초)")
+        self.wait = WebDriverWait(self.driver, ELEMENT_WAIT_TIMEOUT)
+        log(f"✅ Chrome 드라이버 설정 완료 (타임아웃: {PAGE_LOAD_TIMEOUT}초)")
     
     def setup_google_sheets(self):
         """구글 시트 연결 설정"""
@@ -101,7 +102,7 @@ class PurseForumScraper:
         
         try:
             log(f"🌐 URL: {forum_url}")
-            log("⏳ 페이지 로딩 대기 중... (최대 30초)")
+            log(f"⏳ 페이지 로딩 대기 중... (최대 {PAGE_LOAD_TIMEOUT}초)")
             
             self.driver.get(forum_url)
             
@@ -112,7 +113,7 @@ class PurseForumScraper:
             log(f"📍 현재 URL: {self.driver.current_url}")
             
         except TimeoutException:
-            log(f"❌ 타임아웃: 페이지 로드가 30초 초과")
+            log(f"❌ 타임아웃: 페이지 로드가 {PAGE_LOAD_TIMEOUT}초 초과")
             raise
         except Exception as e:
             log(f"❌ 페이지 로드 실패: {e}")
@@ -173,82 +174,103 @@ class PurseForumScraper:
         
         log(f"\n✅ 총 {len(self.collected_urls)}개 링크 수집 완료")
     
-    def extract_thread_content(self, url, keywords):
-        """개별 스레드 본문 추출 (키워드 + 가격 필터링)"""
-        try:
-            self.driver.get(url)
-            time.sleep(2)
-            
-            # 제목
+    def extract_thread_content(self, url, keywords, retry=3):
+        """개별 스레드 본문 추출 (키워드 + 가격 필터링, 재시도 로직)"""
+        for attempt in range(retry):
             try:
-                title = self.driver.find_element(By.CSS_SELECTOR, 'h1.p-title-value').text
-            except:
-                title = "No title"
-            
-            # 작성자
-            try:
-                author = self.driver.find_element(By.CSS_SELECTOR, 'a.username').text
-            except:
-                author = "Unknown"
-            
-            # 작성일
-            try:
-                date = self.driver.find_element(By.CSS_SELECTOR, 'time').get_attribute('datetime')
-            except:
-                date = ""
-            
-            # 본문 내용
-            try:
-                content_div = self.driver.find_element(By.CSS_SELECTOR, 'div.bbWrapper')
-                content = content_div.text
+                if attempt > 0:
+                    log(f"🔄 재시도 {attempt + 1}/{retry}")
                 
-                content = re.sub(r'\n{3,}', '\n\n', content)
-                content = content.strip()
+                self.driver.get(url)
+                time.sleep(3)
                 
-                if len(content) > 45000:
-                    content = content[:45000] + "\n\n... (본문 너무 길어 일부만 표시)"
+                # 제목
+                try:
+                    title = self.driver.find_element(By.CSS_SELECTOR, 'h1.p-title-value').text
+                except:
+                    title = "No title"
+                
+                # 작성자
+                try:
+                    author = self.driver.find_element(By.CSS_SELECTOR, 'a.username').text
+                except:
+                    author = "Unknown"
+                
+                # 작성일
+                try:
+                    date = self.driver.find_element(By.CSS_SELECTOR, 'time').get_attribute('datetime')
+                except:
+                    date = ""
+                
+                # 본문 내용
+                try:
+                    content_div = self.driver.find_element(By.CSS_SELECTOR, 'div.bbWrapper')
+                    content = content_div.text
                     
-            except:
-                content = "No content"
-            
-            # 키워드 필터링
-            keyword_list = [k.strip().lower() for k in keywords.split(',')]
-            text = (title + " " + content).lower()
-            
-            has_keyword = any(keyword in text for keyword in keyword_list)
-            
-            if not has_keyword:
-                log(f"⏭️ 키워드 없음: {title[:50]}")
-                return None
-            
-            # 가격 정보 추출
-            prices = self.extract_prices(title + " " + content)
-            price_info = ", ".join(prices) if prices else "No price"
-            
-            # 가격 정보 없으면 제외
-            if price_info == "No price":
-                log(f"⏭️ 가격 없음: {title[:50]}")
-                return None
-            
-            # 병원 정보 추출
-            hospitals = self.extract_hospitals(title + " " + content)
-            hospital_info = ", ".join(hospitals) if hospitals else "No hospital"
-            
-            log(f"✅ 키워드 + 가격 발견: {title[:50]}")
-            
-            return {
-                'title': title,
-                'url': url,
-                'author': author,
-                'date': date,
-                'content': content,
-                'price': price_info,
-                'hospital': hospital_info
-            }
-            
-        except Exception as e:
-            log(f"❌ 본문 추출 실패 ({url}): {e}")
-            return None
+                    content = re.sub(r'\n{3,}', '\n\n', content)
+                    content = content.strip()
+                    
+                    if len(content) > 45000:
+                        content = content[:45000] + "\n\n... (본문 너무 길어 일부만 표시)"
+                        
+                except:
+                    content = "No content"
+                
+                # 키워드 필터링
+                keyword_list = [k.strip().lower() for k in keywords.split(',')]
+                text = (title + " " + content).lower()
+                
+                has_keyword = any(keyword in text for keyword in keyword_list)
+                
+                if not has_keyword:
+                    log(f"⏭️ 키워드 없음: {title[:50]}")
+                    return None
+                
+                # 가격 정보 추출
+                prices = self.extract_prices(title + " " + content)
+                price_info = ", ".join(prices) if prices else "No price"
+                
+                # 가격 정보 없으면 제외
+                if price_info == "No price":
+                    log(f"⏭️ 가격 없음: {title[:50]}")
+                    return None
+                
+                # 병원 정보 추출
+                hospitals = self.extract_hospitals(title + " " + content)
+                hospital_info = ", ".join(hospitals) if hospitals else "No hospital"
+                
+                log(f"✅ 키워드 + 가격 발견: {title[:50]}")
+                
+                return {
+                    'title': title,
+                    'url': url,
+                    'author': author,
+                    'date': date,
+                    'content': content,
+                    'price': price_info,
+                    'hospital': hospital_info
+                }
+                
+            except TimeoutException:
+                log(f"⏱️ 타임아웃 발생 (시도 {attempt + 1}/{retry})")
+                if attempt < retry - 1:
+                    log("🔄 5초 후 재시도...")
+                    time.sleep(5)
+                    continue
+                else:
+                    log(f"❌ {retry}번 시도 후 실패: {url[:50]}...")
+                    return None
+                    
+            except Exception as e:
+                log(f"❌ 본문 추출 실패 (시도 {attempt + 1}/{retry}): {e}")
+                if attempt < retry - 1:
+                    log("🔄 5초 후 재시도...")
+                    time.sleep(5)
+                    continue
+                else:
+                    return None
+        
+        return None
     
     def extract_prices(self, text):
         """가격 정보 추출"""
@@ -338,6 +360,7 @@ class PurseForumScraper:
             # 3. 본문 수집 (모든 링크 확인!)
             log(f"\n📖 본문 수집 시작... ({len(self.collected_urls)}개 스레드)")
             log(f"🔍 필터링: 키워드 있음 + 가격 있음")
+            log(f"⏱️ 예상 소요 시간: 약 {len(self.collected_urls) * DELAY_BETWEEN_REQUESTS / 60:.1f}분")
             
             urls_to_process = list(self.collected_urls)
             
@@ -349,6 +372,7 @@ class PurseForumScraper:
                 if result:
                     self.results.append(result)
                 
+                # 대기 시간
                 if i < len(urls_to_process):
                     time.sleep(DELAY_BETWEEN_REQUESTS)
             
