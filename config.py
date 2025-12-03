@@ -7,7 +7,6 @@ Purse Forum 크롤러 설정 파일
 # ============================================
 
 # 가격 관련 키워드 (본문에서 찾을 단어들)
-# GitHub Actions에서 자동으로 업데이트됩니다
 PRICE_KEYWORDS = "price,cost,paid,spent,total,usd,krw,won,dollar,$,₩"
 
 # 시작 페이지 (1부터 시작)
@@ -15,9 +14,6 @@ START_PAGE = 1
 
 # 최대 페이지 수
 MAX_PAGES = 5
-
-# 최대 스레드 수
-MAX_THREADS = 50
 
 # 요청 간 대기 시간 (초)
 DELAY_BETWEEN_REQUESTS = 2

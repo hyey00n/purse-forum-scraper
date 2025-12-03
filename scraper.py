@@ -317,11 +317,11 @@ class PurseForumScraper:
         except Exception as e:
             log(f"❌ 구글 시트 저장 실패: {e}")
     
-    def run(self, keywords, max_pages=5, max_threads=50, start_page=1):
+    def run(self, keywords, max_pages=5, start_page=1):
         """메인 실행"""
         log("=" * 60)
         log("🚀 Purse Forum 크롤러 시작")
-        log(f"🔍 검색 키워드: {keywords}")
+        log(f"🔍 가격 키워드: {keywords}")
         log("=" * 60)
         
         try:
@@ -335,11 +335,11 @@ class PurseForumScraper:
                 log("⚠️ 수집된 링크가 없습니다!")
                 return
             
-            # 3. 본문 수집 (키워드 + 가격 필터링)
-            log(f"\n📖 본문 수집 시작... (최대 {max_threads}개)")
+            # 3. 본문 수집 (모든 링크 확인!)
+            log(f"\n📖 본문 수집 시작... ({len(self.collected_urls)}개 스레드)")
             log(f"🔍 필터링: 키워드 있음 + 가격 있음")
             
-            urls_to_process = list(self.collected_urls)[:max_threads]
+            urls_to_process = list(self.collected_urls)
             
             for i, url in enumerate(urls_to_process, 1):
                 log(f"\n[{i}/{len(urls_to_process)}] {url}")
@@ -383,7 +383,6 @@ if __name__ == "__main__":
         scraper.run(
             keywords=PRICE_KEYWORDS,
             max_pages=MAX_PAGES,
-            max_threads=MAX_THREADS,
             start_page=START_PAGE
         )
     except Exception as e:
