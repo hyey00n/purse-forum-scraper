@@ -1,6 +1,6 @@
 """
 Purse Forum 크롤러
-Asian Plastic Surgery 포럼에서 데이터 수집 → 구글 시트 저장
+Asian Plastic Surgery 포럼에서 가격 정보 수집 → 구글 시트 저장
 """
 
 import sys
@@ -93,7 +93,7 @@ class PurseForumScraper:
             log(f"❌ 구글 시트 연결 실패: {e}")
             raise
     
-    def search_forum(self, keyword):
+    def search_forum(self):
         """포럼 섹션 접속"""
         log(f"\n🔍 Asian Plastic Surgery 포럼 접속 중...")
         
@@ -110,21 +110,19 @@ class PurseForumScraper:
             
             log(f"✅ 페이지 로드 완료!")
             log(f"📍 현재 URL: {self.driver.current_url}")
-            log(f"📄 페이지 제목: {self.driver.title}")
             
         except TimeoutException:
             log(f"❌ 타임아웃: 페이지 로드가 30초 초과")
-            log("🔧 포럼 사이트가 느리거나 봇을 차단했을 수 있습니다")
             raise
         except Exception as e:
             log(f"❌ 페이지 로드 실패: {e}")
             raise
     
     def collect_thread_links(self, max_pages=5, start_page=1):
-        """스레드 링크 수집 (모든 스레드)"""
+        """스레드 링크 수집"""
         log(f"\n📋 링크 수집 중... ({start_page}페이지부터 {max_pages}페이지까지)")
         
-        # 시작 페이지로 이동 (1페이지가 아닌 경우)
+        # 시작 페이지로 이동
         if start_page > 1:
             log(f"➡️ {start_page}페이지로 건너뛰는 중...")
             for skip in range(1, start_page):
@@ -133,11 +131,8 @@ class PurseForumScraper:
                     next_button.click()
                     time.sleep(2)
                     log(f"✅ {skip + 1}페이지로 이동")
-                except NoSuchElementException:
-                    log(f"⚠️ {skip}페이지에서 다음 버튼을 찾을 수 없음")
-                    break
-                except Exception as e:
-                    log(f"❌ 페이지 건너뛰기 실패: {e}")
+                except:
+                    log(f"⚠️ 페이지 건너뛰기 실패")
                     break
         
         for page in range(start_page, max_pages + 1):
@@ -178,8 +173,8 @@ class PurseForumScraper:
         
         log(f"\n✅ 총 {len(self.collected_urls)}개 링크 수집 완료")
     
-    def extract_thread_content(self, url):
-        """개별 스레드 본문 추출"""
+    def extract_thread_content(self, url, keywords):
+        """개별 스레드 본문 추출 (키워드 + 가격 필터링)"""
         try:
             self.driver.get(url)
             time.sleep(2)
@@ -216,13 +211,30 @@ class PurseForumScraper:
             except:
                 content = "No content"
             
+            # 키워드 필터링
+            keyword_list = [k.strip().lower() for k in keywords.split(',')]
+            text = (title + " " + content).lower()
+            
+            has_keyword = any(keyword in text for keyword in keyword_list)
+            
+            if not has_keyword:
+                log(f"⏭️ 키워드 없음: {title[:50]}")
+                return None
+            
             # 가격 정보 추출
             prices = self.extract_prices(title + " " + content)
             price_info = ", ".join(prices) if prices else "No price"
             
+            # 가격 정보 없으면 제외
+            if price_info == "No price":
+                log(f"⏭️ 가격 없음: {title[:50]}")
+                return None
+            
             # 병원 정보 추출
             hospitals = self.extract_hospitals(title + " " + content)
             hospital_info = ", ".join(hospitals) if hospitals else "No hospital"
+            
+            log(f"✅ 키워드 + 가격 발견: {title[:50]}")
             
             return {
                 'title': title,
@@ -268,34 +280,12 @@ class PurseForumScraper:
         return list(set(found_hospitals))[:5]
     
     def save_to_sheet(self):
-        """구글 시트에 저장 (가격 정보 있는 것만)"""
+        """구글 시트에 저장"""
         if not self.results:
             log("⚠️ 저장할 데이터가 없습니다.")
             return
         
-        # 가격 관련 키워드
-        price_keywords = ['price', 'cost', 'paid', 'spent', 'total', 'usd', 'krw', 'won', 'dollar', '$', '₩']
-        
-        # 가격 정보가 있는 게시글만 필터링
-        filtered_results = []
-        for result in self.results:
-            text = (result['title'] + " " + result['content']).lower()
-            
-            # 가격 정보가 있거나 가격 키워드가 있으면 포함
-            has_price = result['price'] != "No price"
-            has_keyword = any(keyword in text for keyword in price_keywords)
-            
-            if has_price or has_keyword:
-                filtered_results.append(result)
-                log(f"✅ 가격 정보 발견: {result['title'][:50]}")
-            else:
-                log(f"⏭️ 가격 없음 건너뜀: {result['title'][:50]}")
-        
-        if not filtered_results:
-            log("⚠️ 가격 정보가 있는 게시글이 없습니다.")
-            return
-        
-        log(f"\n💾 구글 시트에 {len(filtered_results)}개 데이터 저장 중... (전체 {len(self.results)}개 중)")
+        log(f"\n💾 구글 시트에 {len(self.results)}개 데이터 저장 중...")
         
         try:
             existing_rows = len(self.sheet.get_all_values())
@@ -303,7 +293,7 @@ class PurseForumScraper:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rows = []
             
-            for result in filtered_results:
+            for result in self.results:
                 row = [
                     result['title'],
                     result['url'],
@@ -326,37 +316,38 @@ class PurseForumScraper:
                 
         except Exception as e:
             log(f"❌ 구글 시트 저장 실패: {e}")
-            
-    def run(self, keyword, max_pages=5, max_threads=50, start_page=1):
+    
+    def run(self, keywords, max_pages=5, max_threads=50, start_page=1):
         """메인 실행"""
         log("=" * 60)
         log("🚀 Purse Forum 크롤러 시작")
+        log(f"🔍 검색 키워드: {keywords}")
         log("=" * 60)
         
         try:
             # 1. 포럼 접속
-            self.search_forum(keyword)
+            self.search_forum()
             
-            # 2. 링크 수집 (start_page부터 시작)
+            # 2. 링크 수집
             self.collect_thread_links(max_pages, start_page)
             
             if len(self.collected_urls) == 0:
                 log("⚠️ 수집된 링크가 없습니다!")
                 return
             
-            # 3. 본문 수집
+            # 3. 본문 수집 (키워드 + 가격 필터링)
             log(f"\n📖 본문 수집 시작... (최대 {max_threads}개)")
+            log(f"🔍 필터링: 키워드 있음 + 가격 있음")
             
             urls_to_process = list(self.collected_urls)[:max_threads]
             
             for i, url in enumerate(urls_to_process, 1):
                 log(f"\n[{i}/{len(urls_to_process)}] {url}")
                 
-                result = self.extract_thread_content(url)
+                result = self.extract_thread_content(url, keywords)
                 
                 if result:
                     self.results.append(result)
-                    log(f"✅ 수집 완료: {result['title'][:50]}...")
                 
                 if i < len(urls_to_process):
                     time.sleep(DELAY_BETWEEN_REQUESTS)
@@ -367,6 +358,7 @@ class PurseForumScraper:
             log("\n" + "=" * 60)
             log("✅ 크롤링 완료!")
             log(f"📊 총 수집: {len(self.results)}개")
+            log(f"📋 확인한 스레드: {len(urls_to_process)}개")
             log("=" * 60)
             
         except Exception as e:
@@ -389,7 +381,7 @@ if __name__ == "__main__":
     try:
         scraper = PurseForumScraper()
         scraper.run(
-            keyword=SEARCH_KEYWORD,
+            keywords=PRICE_KEYWORDS,
             max_pages=MAX_PAGES,
             max_threads=MAX_THREADS,
             start_page=START_PAGE

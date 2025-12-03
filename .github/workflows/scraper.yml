@@ -3,10 +3,10 @@ name: Purse Forum Scraper
 on:
   workflow_dispatch:
     inputs:
-      keyword:
-        description: '검색 키워드'
+      keywords:
+        description: '가격 키워드 (쉼표로 구분)'
         required: true
-        default: 'rhinoplasty'
+        default: 'price,cost,paid,spent,total,$,₩,won,krw,usd,dollar'
       start_page:
         description: '시작 페이지'
         required: false
@@ -60,7 +60,6 @@ jobs:
       run: |
         python -c "
         import re
-        import os
         
         with open('config.py', 'r', encoding='utf-8') as f:
             content = f.read()
@@ -68,10 +67,15 @@ jobs:
         content = content.replace('YOUR_SPREADSHEET_ID_HERE', '${{ secrets.SPREADSHEET_ID }}')
         
         if '${{ github.event_name }}' == 'workflow_dispatch':
-            content = re.sub(r'SEARCH_KEYWORD = \".*?\"', 'SEARCH_KEYWORD = \"${{ github.event.inputs.keyword }}\"', content)
-            content = re.sub(r'START_PAGE = \d+', 'START_PAGE = ${{ github.event.inputs.start_page }}', content)
-            content = re.sub(r'MAX_PAGES = \d+', 'MAX_PAGES = ${{ github.event.inputs.max_pages }}', content)
-            content = re.sub(r'MAX_THREADS = \d+', 'MAX_THREADS = ${{ github.event.inputs.max_threads }}', content)
+            keywords = '${{ github.event.inputs.keywords }}'.replace('\"', '\\\"')
+            start_page = '${{ github.event.inputs.start_page }}'
+            max_pages = '${{ github.event.inputs.max_pages }}'
+            max_threads = '${{ github.event.inputs.max_threads }}'
+            
+            content = re.sub(r'PRICE_KEYWORDS = \".*?\"', f'PRICE_KEYWORDS = \"{keywords}\"', content)
+            content = re.sub(r'START_PAGE = \d+', f'START_PAGE = {start_page}', content)
+            content = re.sub(r'MAX_PAGES = \d+', f'MAX_PAGES = {max_pages}', content)
+            content = re.sub(r'MAX_THREADS = \d+', f'MAX_THREADS = {max_threads}', content)
         
         with open('config.py', 'w', encoding='utf-8') as f:
             f.write(content)
