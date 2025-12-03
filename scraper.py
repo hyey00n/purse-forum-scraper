@@ -120,11 +120,27 @@ class PurseForumScraper:
             log(f"❌ 페이지 로드 실패: {e}")
             raise
     
-    def collect_thread_links(self, max_pages=5):
+    def collect_thread_links(self, max_pages=5, start_page=1):
         """스레드 링크 수집 (모든 스레드)"""
-        log(f"\n📋 링크 수집 중... (최대 {max_pages}페이지)")
+        log(f"\n📋 링크 수집 중... ({start_page}페이지부터 {max_pages}페이지까지)")
         
-        for page in range(1, max_pages + 1):
+        # 시작 페이지로 이동 (1페이지가 아닌 경우)
+        if start_page > 1:
+            log(f"➡️ {start_page}페이지로 건너뛰는 중...")
+            for skip in range(1, start_page):
+                try:
+                    next_button = self.driver.find_element(By.CSS_SELECTOR, 'a.pageNav-jump--next')
+                    next_button.click()
+                    time.sleep(2)
+                    log(f"✅ {skip + 1}페이지로 이동")
+                except NoSuchElementException:
+                    log(f"⚠️ {skip}페이지에서 다음 버튼을 찾을 수 없음")
+                    break
+                except Exception as e:
+                    log(f"❌ 페이지 건너뛰기 실패: {e}")
+                    break
+        
+        for page in range(start_page, max_pages + 1):
             try:
                 log(f"\n--- 페이지 {page} ---")
                 
@@ -289,7 +305,7 @@ class PurseForumScraper:
         except Exception as e:
             log(f"❌ 구글 시트 저장 실패: {e}")
     
-    def run(self, keyword, max_pages=5, max_threads=50):
+    def run(self, keyword, max_pages=5, max_threads=50, start_page=1):
         """메인 실행"""
         log("=" * 60)
         log("🚀 Purse Forum 크롤러 시작")
@@ -299,8 +315,8 @@ class PurseForumScraper:
             # 1. 포럼 접속
             self.search_forum(keyword)
             
-            # 2. 링크 수집 (키워드 필터링 없이 모든 스레드)
-            self.collect_thread_links(max_pages)
+            # 2. 링크 수집 (start_page부터 시작)
+            self.collect_thread_links(max_pages, start_page)
             
             if len(self.collected_urls) == 0:
                 log("⚠️ 수집된 링크가 없습니다!")
@@ -353,7 +369,8 @@ if __name__ == "__main__":
         scraper.run(
             keyword=SEARCH_KEYWORD,
             max_pages=MAX_PAGES,
-            max_threads=MAX_THREADS
+            max_threads=MAX_THREADS,
+            start_page=START_PAGE
         )
     except Exception as e:
         log(f"❌ 프로그램 실행 실패: {e}")

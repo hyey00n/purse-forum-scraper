@@ -9,6 +9,9 @@ Purse Forum 크롤러 설정 파일
 # 검색 키워드 (여기를 수정하세요!)
 SEARCH_KEYWORD = "rhinoplasty"
 
+# 시작 페이지 (1부터 시작)
+START_PAGE = 1
+
 # 최대 페이지 수 (1-10 권장)
 MAX_PAGES = 5
 

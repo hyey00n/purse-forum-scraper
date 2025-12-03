@@ -1,4 +1,4 @@
-name: Purse Forum Scraper
+yamlname: Purse Forum Scraper
 
 on:
   workflow_dispatch:
@@ -7,8 +7,12 @@ on:
         description: '검색 키워드'
         required: true
         default: 'rhinoplasty'
+      start_page:
+        description: '시작 페이지'
+        required: false
+        default: '1'
       max_pages:
-        description: '최대 페이지 수'
+        description: '최대 페이지 수 (종료 페이지)'
         required: false
         default: '5'
       max_threads:
@@ -56,14 +60,15 @@ jobs:
       env:
         SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         KEYWORD: ${{ github.event.inputs.keyword }}
+        START_PAGE: ${{ github.event.inputs.start_page }}
         MAX_PAGES: ${{ github.event.inputs.max_pages }}
         MAX_THREADS: ${{ github.event.inputs.max_threads }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
         python << 'EOF'
         import os
+        import re
         
-        # config.py 읽기
         with open('config.py', 'r', encoding='utf-8') as f:
             content = f.read()
         
@@ -74,14 +79,18 @@ jobs:
         # workflow_dispatch인 경우 추가 설정
         if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
             keyword = os.environ.get('KEYWORD', 'rhinoplasty')
+            start_page = os.environ.get('START_PAGE', '1')
             max_pages = os.environ.get('MAX_PAGES', '5')
             max_threads = os.environ.get('MAX_THREADS', '50')
             
-            # SEARCH_KEYWORD 교체
-            import re
             content = re.sub(
                 r'SEARCH_KEYWORD = ".*?"',
                 f'SEARCH_KEYWORD = "{keyword}"',
+                content
+            )
+            content = re.sub(
+                r'START_PAGE = \d+',
+                f'START_PAGE = {start_page}',
                 content
             )
             content = re.sub(
@@ -95,7 +104,6 @@ jobs:
                 content
             )
         
-        # 저장
         with open('config.py', 'w', encoding='utf-8') as f:
             f.write(content)
         
